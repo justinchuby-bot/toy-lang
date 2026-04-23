@@ -1,0 +1,7 @@
+# Hello World
+print "Hello, Toy Lang!"
+
+# String and number
+name = "world"
+print name
+print 42

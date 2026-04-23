@@ -1,0 +1,20 @@
+# Conditionals demo
+x = 15
+
+if x > 10 {
+    print "x is big"
+} else {
+    print "x is small"
+}
+
+# Equality check
+y = 42
+if y == 42 {
+    print "the answer"
+}
+
+# Nested arithmetic in condition
+z = 3 + 4
+if z != 8 {
+    print "math works"
+}

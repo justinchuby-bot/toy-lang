@@ -1,0 +1,15 @@
+# Arithmetic with operator precedence
+a = 2 + 3 * 4
+print a
+
+# Parentheses override precedence
+b = (2 + 3) * 4
+print b
+
+# Negative numbers
+c = -10 + 3
+print c
+
+# Division
+d = 100 / 4
+print d
