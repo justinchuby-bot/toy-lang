@@ -18,6 +18,8 @@ TT_EQ       = 'EQ'
 TT_NEQ      = 'NEQ'
 TT_LT       = 'LT'
 TT_GT       = 'GT'
+TT_LTE      = 'LTE'
+TT_GTE      = 'GTE'
 TT_LPAREN   = 'LPAREN'
 TT_RPAREN   = 'RPAREN'
 TT_LBRACE   = 'LBRACE'
@@ -89,6 +91,10 @@ class Lexer:
             elif ch == '-': tokens.append(Token(TT_MINUS)); self._advance()
             elif ch == '*': tokens.append(Token(TT_MUL)); self._advance()
             elif ch == '/': tokens.append(Token(TT_DIV)); self._advance()
+            elif ch == '<' and self._peek() == '=':
+                tokens.append(Token(TT_LTE)); self._advance(); self._advance()
+            elif ch == '>' and self._peek() == '=':
+                tokens.append(Token(TT_GTE)); self._advance(); self._advance()
             elif ch == '<': tokens.append(Token(TT_LT)); self._advance()
             elif ch == '>': tokens.append(Token(TT_GT)); self._advance()
             elif ch == '(': tokens.append(Token(TT_LPAREN)); self._advance()
@@ -304,7 +310,7 @@ class Parser:
 
     def _comparison(self):
         left = self._addition()
-        while tok := self._match(TT_EQ, TT_NEQ, TT_LT, TT_GT):
+        while tok := self._match(TT_EQ, TT_NEQ, TT_LT, TT_GT, TT_LTE, TT_GTE):
             right = self._addition()
             left = BinOp(left, tok.type, right)
         return left
@@ -349,6 +355,22 @@ class Parser:
                 self._eat(TT_RPAREN)
                 return FnCall(tok.value, args)
             return Variable(tok.value)
+        elif tok.type == TT_FN:
+            # Anonymous function: fn(params) = expr  or  fn(params) { block }
+            self.pos += 1
+            self._eat(TT_LPAREN)
+            params = []
+            if self._current().type != TT_RPAREN:
+                params.append(self._eat(TT_IDENT).value)
+                while self._match(TT_COMMA):
+                    params.append(self._eat(TT_IDENT).value)
+            self._eat(TT_RPAREN)
+            if self._current().type == TT_ASSIGN:
+                self.pos += 1
+                body = self._expr()
+            else:
+                body = self._block()
+            return FnDef(None, params, body)
         elif tok.type == TT_LPAREN:
             self.pos += 1
             expr = self._expr()
@@ -398,6 +420,8 @@ def evaluate(node, env):
             TT_NEQ: lambda a, b: a != b,
             TT_LT: lambda a, b: a < b,
             TT_GT: lambda a, b: a > b,
+            TT_LTE: lambda a, b: a <= b,
+            TT_GTE: lambda a, b: a >= b,
         }
         return ops[node.op](left, right)
 
@@ -427,8 +451,8 @@ def evaluate(node, env):
 
     elif isinstance(node, FnDef):
         closure = Closure(node.params, node.body, env)
-        env.set(node.name, closure)
-        # Allow recursion: the closure's env already contains the name
+        if node.name:
+            env.set(node.name, closure)
         return closure
 
     elif isinstance(node, FnCall):

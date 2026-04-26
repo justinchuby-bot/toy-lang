@@ -39,6 +39,14 @@ if x > 0 {
 }
 ```
 
+### Comparison Operators
+```
+print 3 > 2     # true
+print 5 <= 5    # true
+print 3 >= 4    # false
+print 1 != 2    # true
+```
+
 ### Functions
 
 Inline (single-expression) functions:
@@ -71,16 +79,22 @@ fn fib(n) {
 print fib(10)    # 55
 ```
 
-### Closures
+### Closures & Anonymous Functions
 
 Functions capture their enclosing environment:
 ```
 fn make_adder(x) {
-    fn adder(y) = x + y
-    return adder
+    return fn(y) = x + y
 }
 plus5 = make_adder(5)
 print plus5(3)    # 8
+```
+
+Anonymous functions can be used inline:
+```
+fn apply(f, x) { return f(x) }
+result = apply(fn(n) = n * 2, 21)
+print result    # 42
 ```
 
 ### Comments
@@ -118,6 +132,6 @@ python3 interpreter.py program.toy
 - **Loops** — Would add complexity; recursion covers iteration
 - **Type system** — Runtime duck typing only
 - **Error recovery** — Fails fast on first error
-- **First-class function expressions** — Functions must be named (no lambdas)
+- **First-class anonymous functions** — `fn(x) = x + 1` works as an expression
 
 These omissions keep the code short and focused on the core interpreter pattern.
