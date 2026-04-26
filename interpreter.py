@@ -1,23 +1,9 @@
 #!/usr/bin/env python3
-"""
-Toy Language Interpreter
-========================
-A minimal interpreter demonstrating: lexing → parsing → AST → evaluation.
-Educational focus: clarity over cleverness.
-"""
-
-# ============================================================
-# TOKENS
-# ============================================================
 
 class Token:
-    """A lexical token with a type and optional value."""
     def __init__(self, type, value=None):
         self.type = type
         self.value = value
-
-    def __repr__(self):
-        return f"Token({self.type}, {self.value!r})"
 
 # Token types
 TT_NUMBER   = 'NUMBER'
@@ -27,11 +13,11 @@ TT_PLUS     = 'PLUS'
 TT_MINUS    = 'MINUS'
 TT_MUL      = 'MUL'
 TT_DIV      = 'DIV'
-TT_ASSIGN   = 'ASSIGN'    # =
-TT_EQ       = 'EQ'        # ==
-TT_NEQ      = 'NEQ'       # !=
-TT_LT       = 'LT'        # <
-TT_GT       = 'GT'        # >
+TT_ASSIGN   = 'ASSIGN'
+TT_EQ       = 'EQ'
+TT_NEQ      = 'NEQ'
+TT_LT       = 'LT'
+TT_GT       = 'GT'
 TT_LPAREN   = 'LPAREN'
 TT_RPAREN   = 'RPAREN'
 TT_LBRACE   = 'LBRACE'
@@ -39,17 +25,16 @@ TT_RBRACE   = 'RBRACE'
 TT_IF       = 'IF'
 TT_ELSE     = 'ELSE'
 TT_PRINT    = 'PRINT'
+TT_FN       = 'FN'
+TT_RETURN   = 'RETURN'
+TT_COMMA    = 'COMMA'
 TT_NEWLINE  = 'NEWLINE'
 TT_EOF      = 'EOF'
 
-KEYWORDS = {'if': TT_IF, 'else': TT_ELSE, 'print': TT_PRINT}
-
-# ============================================================
-# LEXER
-# ============================================================
+KEYWORDS = {'if': TT_IF, 'else': TT_ELSE, 'print': TT_PRINT,
+            'fn': TT_FN, 'return': TT_RETURN}
 
 class Lexer:
-    """Converts source text into a stream of tokens."""
 
     def __init__(self, text):
         self.text = text
@@ -110,6 +95,7 @@ class Lexer:
             elif ch == ')': tokens.append(Token(TT_RPAREN)); self._advance()
             elif ch == '{': tokens.append(Token(TT_LBRACE)); self._advance()
             elif ch == '}': tokens.append(Token(TT_RBRACE)); self._advance()
+            elif ch == ',': tokens.append(Token(TT_COMMA)); self._advance()
 
             else:
                 raise SyntaxError(f"Unexpected character: {ch!r} at position {self.pos}")
@@ -147,23 +133,15 @@ class Lexer:
         tt = KEYWORDS.get(word, TT_IDENT)
         return Token(tt, word)
 
-
-# ============================================================
-# AST NODES
-# ============================================================
-
 class Number:
     def __init__(self, value): self.value = value
-    def __repr__(self): return f"Number({self.value})"
 
 class String:
     def __init__(self, value): self.value = value
-    def __repr__(self): return f"String({self.value!r})"
 
 class BinOp:
     def __init__(self, left, op, right):
         self.left = left; self.op = op; self.right = right
-    def __repr__(self): return f"BinOp({self.left} {self.op} {self.right})"
 
 class UnaryOp:
     def __init__(self, op, operand):
@@ -188,26 +166,24 @@ class If:
 class Block:
     def __init__(self, statements): self.statements = statements
 
+class FnDef:
+    def __init__(self, name, params, body):
+        self.name = name; self.params = params; self.body = body
 
-# ============================================================
-# PARSER (Recursive Descent)
-# ============================================================
+class FnCall:
+    def __init__(self, name, args):
+        self.name = name; self.args = args
+
+class Return:
+    def __init__(self, expr): self.expr = expr
+
+class Closure:
+    def __init__(self, params, body, env):
+        self.params = params; self.body = body; self.env = env
 
 class Parser:
-    """
-    Grammar (simplified):
-        program    → statement*
-        statement  → print_stmt | if_stmt | assign_stmt | expr
-        print_stmt → 'print' expr
-        if_stmt    → 'if' expr '{' block '}' ('else' '{' block '}')?
-        assign_stmt→ IDENT '=' expr
-        expr       → comparison
-        comparison → addition (('==' | '!=' | '<' | '>') addition)*
-        addition   → multiply (('+' | '-') multiply)*
-        multiply   → unary (('*' | '/') unary)*
-        unary      → ('-') unary | atom
-        atom       → NUMBER | STRING | IDENT | '(' expr ')'
-    """
+    # Grammar: program → stmt* | stmt → print|if|fn|return|assign|expr
+    # fn → 'fn' ID '(' params ')' ('=' expr | '{' block '}')
 
     def __init__(self, tokens):
         self.tokens = tokens
@@ -235,7 +211,6 @@ class Parser:
             self.pos += 1
 
     def parse(self):
-        """Parse the full program into a Block of statements."""
         stmts = []
         self._skip_newlines()
         while self._current().type != TT_EOF:
@@ -250,6 +225,10 @@ class Parser:
             return self._print_stmt()
         elif tok.type == TT_IF:
             return self._if_stmt()
+        elif tok.type == TT_FN:
+            return self._fn_def()
+        elif tok.type == TT_RETURN:
+            return self._return_stmt()
         # Look ahead for assignment: IDENT '='
         elif tok.type == TT_IDENT and self.pos + 1 < len(self.tokens) \
                 and self.tokens[self.pos + 1].type == TT_ASSIGN:
@@ -286,6 +265,33 @@ class Parser:
             stmts.append(self._statement())
             self._skip_newlines()
         return Block(stmts)
+
+    def _fn_def(self):
+        self._eat(TT_FN)
+        name = self._eat(TT_IDENT).value
+        self._eat(TT_LPAREN)
+        params = []
+        if self._current().type != TT_RPAREN:
+            params.append(self._eat(TT_IDENT).value)
+            while self._match(TT_COMMA):
+                params.append(self._eat(TT_IDENT).value)
+        self._eat(TT_RPAREN)
+        self._skip_newlines()
+        if self._current().type == TT_ASSIGN:
+            self._eat(TT_ASSIGN)
+            body = self._expr()
+        elif self._current().type == TT_LBRACE:
+            self._eat(TT_LBRACE)
+            body = self._block()
+            self._eat(TT_RBRACE)
+        else:
+            raise SyntaxError("Expected '=' or '{' after function params")
+        return FnDef(name, params, body)
+
+    def _return_stmt(self):
+        self._eat(TT_RETURN)
+        expr = self._expr()
+        return Return(expr)
 
     def _assign_stmt(self):
         name = self._eat(TT_IDENT).value
@@ -332,6 +338,16 @@ class Parser:
             return String(tok.value)
         elif tok.type == TT_IDENT:
             self.pos += 1
+            # Check for function call: IDENT '('
+            if self._current().type == TT_LPAREN:
+                self._eat(TT_LPAREN)
+                args = []
+                if self._current().type != TT_RPAREN:
+                    args.append(self._expr())
+                    while self._match(TT_COMMA):
+                        args.append(self._expr())
+                self._eat(TT_RPAREN)
+                return FnCall(tok.value, args)
             return Variable(tok.value)
         elif tok.type == TT_LPAREN:
             self.pos += 1
@@ -341,16 +357,7 @@ class Parser:
         else:
             raise SyntaxError(f"Unexpected token: {tok}")
 
-
-# ============================================================
-# EVALUATOR (Tree-Walking Interpreter)
-# ============================================================
-
 class Environment:
-    """
-    Variable scope. Each environment has an optional parent for lexical scoping.
-    Variable lookup walks up the chain; assignment creates in current scope.
-    """
     def __init__(self, parent=None):
         self.vars = {}
         self.parent = parent
@@ -365,9 +372,10 @@ class Environment:
     def set(self, name, value):
         self.vars[name] = value
 
+class _ReturnSignal(Exception):
+    def __init__(self, value): self.value = value
 
 def evaluate(node, env):
-    """Recursively evaluate an AST node in the given environment."""
 
     if isinstance(node, Number):
         return node.value
@@ -417,6 +425,32 @@ def evaluate(node, env):
             return evaluate(node.else_block, Environment(parent=env))
         return None
 
+    elif isinstance(node, FnDef):
+        closure = Closure(node.params, node.body, env)
+        env.set(node.name, closure)
+        # Allow recursion: the closure's env already contains the name
+        return closure
+
+    elif isinstance(node, FnCall):
+        func = env.get(node.name)
+        if not isinstance(func, Closure):
+            raise RuntimeError(f"{node.name} is not a function")
+        if len(node.args) != len(func.params):
+            raise RuntimeError(
+                f"{node.name}() expects {len(func.params)} args, got {len(node.args)}")
+        args = [evaluate(a, env) for a in node.args]
+        call_env = Environment(parent=func.env)
+        for name, val in zip(func.params, args):
+            call_env.set(name, val)
+        try:
+            result = evaluate(func.body, call_env)
+        except _ReturnSignal as ret:
+            result = ret.value
+        return result
+
+    elif isinstance(node, Return):
+        raise _ReturnSignal(evaluate(node.expr, env))
+
     elif isinstance(node, Block):
         result = None
         for stmt in node.statements:
@@ -426,22 +460,23 @@ def evaluate(node, env):
     else:
         raise RuntimeError(f"Unknown node type: {type(node).__name__}")
 
-
-# ============================================================
-# RUN & REPL
-# ============================================================
-
 def run(source, env=None):
-    """Lex, parse, and evaluate a source string."""
     if env is None:
         env = Environment()
     tokens = Lexer(source).tokenize()
     ast = Parser(tokens).parse()
     return evaluate(ast, env)
 
-
 def repl():
-    """Interactive Read-Eval-Print Loop."""
+    import readline
+    import os
+    histfile = os.path.expanduser("~/.toy_lang_history")
+    try:
+        readline.read_history_file(histfile)
+    except FileNotFoundError:
+        pass
+    readline.set_history_length(1000)
+
     print("Toy Lang REPL (type 'quit' to exit)")
     env = Environment()
     while True:
@@ -454,13 +489,25 @@ def repl():
             break
         if not line.strip():
             continue
+        # Multi-line: if line ends with '{', read until balanced
+        if line.rstrip().endswith('{'):
+            depth = line.count('{') - line.count('}')
+            while depth > 0:
+                try:
+                    cont = input("... ")
+                except (EOFError, KeyboardInterrupt):
+                    print("\nBye!")
+                    readline.write_history_file(histfile)
+                    return
+                line += '\n' + cont
+                depth += cont.count('{') - cont.count('}')
         try:
             result = run(line, env)
             if result is not None:
                 print(result)
         except Exception as e:
             print(f"Error: {e}")
-
+    readline.write_history_file(histfile)
 
 if __name__ == '__main__':
     import sys

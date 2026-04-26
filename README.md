@@ -8,57 +8,100 @@ A minimal interpreter for a toy programming language, built in Python for educat
 Source Code → Lexer → Tokens → Parser → AST → Evaluator → Result
 ```
 
-### Components (~350 lines total)
+### Components (~500 lines total)
 
 1. **Lexer** — Scans source text character-by-character, producing tokens (numbers, strings, identifiers, operators, keywords).
 
-2. **Parser** — Recursive descent parser that builds an Abstract Syntax Tree. Why recursive descent? It maps 1:1 to the grammar rules, making it easy to read and extend. Each grammar rule is a method.
+2. **Parser** — Recursive descent parser that builds an Abstract Syntax Tree. Each grammar rule maps to a method.
 
-3. **AST Nodes** — Simple data classes: `Number`, `String`, `BinOp`, `UnaryOp`, `Variable`, `Assign`, `Print`, `If`, `Block`.
+3. **AST Nodes** — Simple data classes: `Number`, `String`, `BinOp`, `UnaryOp`, `Variable`, `Assign`, `Print`, `If`, `Block`, `FnDef`, `FnCall`, `Return`.
 
-4. **Evaluator** — Tree-walking interpreter. Visits each AST node and computes the result. Uses an `Environment` for variable storage.
+4. **Evaluator** — Tree-walking interpreter with `Environment` for lexical scoping.
 
-5. **REPL** — Interactive mode with persistent environment across lines.
-
-## Scoping
-
-The `Environment` class implements lexical scoping via a parent chain:
-- Global scope has no parent
-- `if` blocks create a child scope (can read parent vars, writes stay local)
-- Variable lookup walks up the chain until found
+5. **REPL** — Interactive mode with readline history (up/down arrows) and multi-line input support.
 
 ## Language Features
 
+### Variables & Arithmetic
 ```
-# Variables
 x = 42
 name = "hello"
-
-# Arithmetic with precedence
 result = (2 + 3) * 4
-
-# Comparisons
 print x > 10
+```
 
-# Conditionals
+### Conditionals
+```
 if x > 0 {
     print "positive"
 } else {
     print "non-positive"
 }
-
-# Comments start with #
 ```
 
-## What's Intentionally Left Out
+### Functions
 
-- **Loops** — Would add complexity; if/else demonstrates control flow
-- **Functions** — Would need call stacks, closures, return values
-- **Type system** — Runtime duck typing only
-- **Error recovery** — Fails fast on first error
-- **Multi-line REPL** — Single-line input only in interactive mode
+Inline (single-expression) functions:
+```
+fn add(a, b) = a + b
+print add(3, 4)    # 7
+```
 
-These omissions keep the code short and focused on the core interpreter pattern.
+Multi-line block functions with `return`:
+```
+fn factorial(n) {
+    if n < 2 {
+        return 1
+    } else {
+        return n * factorial(n - 1)
+    }
+}
+print factorial(10)    # 3628800
+```
+
+Recursive fibonacci:
+```
+fn fib(n) {
+    if n < 2 {
+        return n
+    } else {
+        return fib(n - 1) + fib(n - 2)
+    }
+}
+print fib(10)    # 55
+```
+
+### Closures
+
+Functions capture their enclosing environment:
+```
+fn make_adder(x) {
+    fn adder(y) = x + y
+    return adder
+}
+plus5 = make_adder(5)
+print plus5(3)    # 8
+```
+
+### Comments
+```
+# This is a comment
+x = 42  # inline comments work too
+```
+
+## Scoping
+
+The `Environment` class implements lexical scoping via a parent chain:
+- Global scope has no parent
+- `if` blocks create a child scope
+- Function bodies run in a new scope with the closure's environment as parent
+- This enables closures and recursion naturally
+
+## REPL Features
+
+- **Readline history** — Up/down arrows navigate command history, persisted to `~/.toy_lang_history`
+- **Multi-line input** — Lines ending with `{` automatically continue until braces balance
+- **Persistent environment** — Variables and functions persist across REPL lines
 
 ## Usage
 
@@ -67,13 +110,14 @@ These omissions keep the code short and focused on the core interpreter pattern.
 python3 interpreter.py
 
 # Run a file
-python3 interpreter.py examples/hello.toy
+python3 interpreter.py program.toy
 ```
 
-## Running Examples
+## What's Intentionally Left Out
 
-```bash
-python3 interpreter.py examples/hello.toy
-python3 interpreter.py examples/math.toy
-python3 interpreter.py examples/conditionals.toy
-```
+- **Loops** — Would add complexity; recursion covers iteration
+- **Type system** — Runtime duck typing only
+- **Error recovery** — Fails fast on first error
+- **First-class function expressions** — Functions must be named (no lambdas)
+
+These omissions keep the code short and focused on the core interpreter pattern.
